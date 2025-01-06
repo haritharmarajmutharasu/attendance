@@ -3,6 +3,9 @@
     {
       "src": "package.json",
       "use": "@vercel/node",
+      "build": {
+        "nodeVersion": "18.x"
+      },
       "config": {
         "includeFiles": [
           "package.json",
