@@ -17,11 +17,11 @@ app.use(cors({ origin: "*", methods: "GET,POST,PUT,DELETE", allowedHeaders: "Con
 
 // AWS S3 Configuration
 const s3 = new AWS.S3({
-  accessKeyId: "AKIAXYKJTMARCWKY6H3X",
-  secretAccessKey: "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",
+  accessKeyId: "AKIAXYKJTMARMYSGNCMD",
+  secretAccessKey: "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",
   region: "ap-south-1",
 });
-const bucketName = "sazs-mobile-app";
+const bucketName = "sazs-attendance";
 
 // Multer setup for in-memory uploads
 const upload = multer({ storage: multer.memoryStorage() });
@@ -43,18 +43,20 @@ const initializeModels = async () => {
 
 // Load labeled face descriptors from S3
 const loadLabeledDescriptors = async () => {
+  console.log("calls");
+  
   try {
     // List all files under the "labels/" directory
     const files = await s3
-      .listObjectsV2({ Bucket: bucketName, Prefix: "labels/" })
+      .listObjectsV2({ Bucket: bucketName, Prefix: "labels" })
       .promise();
-
+      
+      console.log("Found label files:", files);
     if (!files.Contents || files.Contents.length === 0) {
       console.log("No label files found in S3.");
       return []; // Return an empty array if no labels are found
     }
 
-    console.log("Found label files:", files.Contents);
 
     return Promise.all(
       files.Contents.map(async (file) => {
