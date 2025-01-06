@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "upload.js",
+      "src": "/upload.js",
       "use": "@vercel/node",
       "config": {
         "externalPackages": ["@tensorflow/tfjs-node", "canvas"]
