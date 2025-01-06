@@ -1,5 +1,15 @@
 {
-  "version": 2,
-  "builds": [{ "src": "upload.js", "use": "@vercel/node" }],
-  "routes": [{ "src": "/(.*)", "dest": "/index.js" }]
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "package.json",
+          "node_modules/**/*"
+        ]
+      }
+    }
+  ],
+  "installCommand": "apt-get update && apt-get install -y libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++ && npm install"
 }
