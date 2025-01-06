@@ -35,8 +35,45 @@ const initializeModels = async () => {
 };
 
 // Dynamically load labeled face descriptors from folder structure
+// const loadLabeledDescriptors = async () => {
+//   const labelsDir = path.join(__dirname, "labels");
+//   const labelFolders = fs.readdirSync(labelsDir).filter((folder) => {
+//     return fs.statSync(path.join(labelsDir, folder)).isDirectory();
+//   });
+
+//   console.log("Found labels:", labelFolders);
+
+//   return Promise.all(
+//     labelFolders.map(async (label) => {
+//       const descriptors = [];
+//       const dir = path.join(labelsDir, label); // Path to label's folder
+
+//       const files = fs.readdirSync(dir).filter((file) => file.endsWith(".jpg") || file.endsWith(".png") || file.endsWith(".jpeg"));
+//       for (const file of files) {
+//         try {
+//           const img = await canvas.loadImage(path.join(dir, file));
+//           const detection = await faceapi
+//             .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+//             .withFaceLandmarks()
+//             .withFaceDescriptor();
+//           if (detection) descriptors.push(detection.descriptor);
+//         } catch (err) {
+//           console.error(`Error processing file ${file}:`, err.message);
+//         }
+//       }
+
+//       return new faceapi.LabeledFaceDescriptors(label, descriptors);
+//     })
+//   );
+// };
+
 const loadLabeledDescriptors = async () => {
-  const labelsDir = path.join(__dirname, "labels");
+  const labelsDir = path.join('/tmp', "labels");
+  if (!fs.existsSync(labelsDir)) {
+    console.error("Labels directory not found.");
+    return [];
+  }
+
   const labelFolders = fs.readdirSync(labelsDir).filter((folder) => {
     return fs.statSync(path.join(labelsDir, folder)).isDirectory();
   });
@@ -66,6 +103,7 @@ const loadLabeledDescriptors = async () => {
     })
   );
 };
+
 
 // Multer setup for file uploads (use /tmp folder in Vercel for uploads)
 const upload = multer({ dest: '/tmp/' });  // Set temporary upload directory to /tmp/
@@ -125,28 +163,25 @@ app.post("/loadimages", uploadLabeledImage.single("image"), async (req, res) => 
   try {
     const { name } = req.body;
 
-    console.log("req.body", req.body);
-
-    // Validate request body
     if (!name || !req.file) {
       return res.status(400).json({ success: false, error: "Name and image are required" });
     }
 
-    // Create a folder for the given name if it doesn't exist
-    const labelDir = path.join(__dirname, "labels", name);
+    // Use `/tmp/` for temporary storage
+    const labelDir = path.join('/tmp', "labels", name);
     if (!fs.existsSync(labelDir)) {
-      fs.mkdirSync(labelDir, { recursive: true });
+      fs.mkdirSync(labelDir, { recursive: true }); // Create directory recursively
       console.log(`Created directory: ${labelDir}`);
     }
 
-    // Move the uploaded file to the created folder (use /tmp path for storage)
+    // Move the uploaded file to the created folder in `/tmp`
     const ext = path.extname(req.file.originalname); // Preserve file extension
-    const newFilePath = path.join(labelDir, `${Date.now()}${ext}`); // Use a timestamp to ensure unique filenames
-    fs.renameSync(req.file.path, newFilePath);
+    const newFilePath = path.join(labelDir, `${Date.now()}${ext}`); // Unique filename using timestamp
+    fs.renameSync(req.file.path, newFilePath); // Move file to the new path
 
     console.log(`File saved to: ${newFilePath}`);
 
-    // Reload the labeled descriptors to include the newly added data
+    // Reload labeled descriptors to include the newly added data
     const labeledDescriptors = await loadLabeledDescriptors();
     faceMatcher = new faceapi.FaceMatcher(labeledDescriptors);
     console.log("Labeled descriptors reloaded successfully");
@@ -162,6 +197,7 @@ app.post("/loadimages", uploadLabeledImage.single("image"), async (req, res) => 
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 
 // Start the server
 const PORT = process.env.PORT || 3000;
