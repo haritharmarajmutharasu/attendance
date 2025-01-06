@@ -9,10 +9,15 @@ const cors = require('cors');
 // Monkey-patch face-api.js to use canvas in Node.js
 const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+const corsOptions = {
+  origin: '*', // Allow all origins (for development purposes, but for production, use specific origin)
+  methods: 'GET,POST,PUT,DELETE',
+  allowedHeaders: 'Content-Type, Authorization',
+};
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 
 // Initialize face-api.js models
 const initializeModels = async () => {
