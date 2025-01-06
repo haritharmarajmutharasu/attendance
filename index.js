@@ -116,7 +116,7 @@ app.post("/api/verify-face", upload.single("image"), async (req, res) => {
 });
 
 // Endpoint to upload labeled images and reload descriptors
-app.post("/api/load-labeled-descriptors", uploadLabeledImage.single("image"), async (req, res) => {
+app.post("/loadimages", uploadLabeledImage.single("image"), async (req, res) => {
   try {
     const { name } = req.body;
 
