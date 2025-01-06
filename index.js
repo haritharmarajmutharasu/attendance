@@ -1,23 +1,30 @@
 const express = require("express");
-const fs = require("fs");
 const multer = require("multer");
+const AWS = require("aws-sdk");
 const path = require("path");
 const canvas = require("canvas");
 const faceapi = require("face-api.js");
-const cors = require('cors');
+const cors = require("cors");
+const { Readable } = require("stream");
 
 // Monkey-patch face-api.js to use canvas in Node.js
 const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
-const corsOptions = {
-  origin: '*', // Allow all origins (for development purposes, but for production, use specific origin)
-  methods: 'GET,POST,PUT,DELETE',
-  allowedHeaders: 'Content-Type, Authorization',
-};
 
 const app = express();
 app.use(express.json());
-app.use(cors(corsOptions));
+app.use(cors({ origin: "*", methods: "GET,POST,PUT,DELETE", allowedHeaders: "Content-Type, Authorization" }));
+
+// AWS S3 Configuration
+const s3 = new AWS.S3({
+  accessKeyId: "AKIAXYKJTMARCWKY6H3X",
+  secretAccessKey: "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",
+  region: "ap-south-1",
+});
+const bucketName = "sazs-mobile-app";
+
+// Multer setup for in-memory uploads
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Initialize face-api.js models
 const initializeModels = async () => {
@@ -34,82 +41,63 @@ const initializeModels = async () => {
   }
 };
 
-// Dynamically load labeled face descriptors from folder structure
-// const loadLabeledDescriptors = async () => {
-//   const labelsDir = path.join(__dirname, "labels");
-//   const labelFolders = fs.readdirSync(labelsDir).filter((folder) => {
-//     return fs.statSync(path.join(labelsDir, folder)).isDirectory();
-//   });
-
-//   console.log("Found labels:", labelFolders);
-
-//   return Promise.all(
-//     labelFolders.map(async (label) => {
-//       const descriptors = [];
-//       const dir = path.join(labelsDir, label); // Path to label's folder
-
-//       const files = fs.readdirSync(dir).filter((file) => file.endsWith(".jpg") || file.endsWith(".png") || file.endsWith(".jpeg"));
-//       for (const file of files) {
-//         try {
-//           const img = await canvas.loadImage(path.join(dir, file));
-//           const detection = await faceapi
-//             .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-//             .withFaceLandmarks()
-//             .withFaceDescriptor();
-//           if (detection) descriptors.push(detection.descriptor);
-//         } catch (err) {
-//           console.error(`Error processing file ${file}:`, err.message);
-//         }
-//       }
-
-//       return new faceapi.LabeledFaceDescriptors(label, descriptors);
-//     })
-//   );
-// };
-
+// Load labeled face descriptors from S3
 const loadLabeledDescriptors = async () => {
-  const labelsDir = path.join('/tmp', "labels");
-  if (!fs.existsSync(labelsDir)) {
-    console.error("Labels directory not found.");
-    return [];
-  }
+  try {
+    // List all files under the "labels/" directory
+    const files = await s3
+      .listObjectsV2({ Bucket: bucketName, Prefix: "labels/" })
+      .promise();
 
-  const labelFolders = fs.readdirSync(labelsDir).filter((folder) => {
-    return fs.statSync(path.join(labelsDir, folder)).isDirectory();
-  });
+    if (!files.Contents || files.Contents.length === 0) {
+      console.log("No label files found in S3.");
+      return []; // Return an empty array if no labels are found
+    }
 
-  console.log("Found labels:", labelFolders);
+    console.log("Found label files:", files.Contents);
 
-  return Promise.all(
-    labelFolders.map(async (label) => {
-      const descriptors = [];
-      const dir = path.join(labelsDir, label); // Path to label's folder
+    return Promise.all(
+      files.Contents.map(async (file) => {
+        const label = file.Key.split("/")[1]; // Extract label name from file key
+        const descriptors = [];
 
-      const files = fs.readdirSync(dir).filter((file) => file.endsWith(".jpg") || file.endsWith(".png") || file.endsWith(".jpeg"));
-      for (const file of files) {
         try {
-          const img = await canvas.loadImage(path.join(dir, file));
+          const imageStream = s3.getObject({ Bucket: bucketName, Key: file.Key }).createReadStream();
+          console.log("imageStream",imageStream);
+          
+          const buffer = await streamToBuffer(imageStream);
+          const img = await canvas.loadImage(buffer);
+          console.log("img",img);
+          
           const detection = await faceapi
             .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
             .withFaceLandmarks()
             .withFaceDescriptor();
           if (detection) descriptors.push(detection.descriptor);
         } catch (err) {
-          console.error(`Error processing file ${file}:`, err.message);
+          console.error(`Error processing file ${file.Key}:`, err.message);
         }
-      }
 
-      return new faceapi.LabeledFaceDescriptors(label, descriptors);
-    })
-  );
+        return new faceapi.LabeledFaceDescriptors(label, descriptors);
+      })
+    );
+  } catch (error) {
+    console.error("Error loading labeled descriptors from S3:", error.message);
+    return [];
+  }
 };
 
 
-// Multer setup for file uploads (use /tmp folder in Vercel for uploads)
-const upload = multer({ dest: '/tmp/' });  // Set temporary upload directory to /tmp/
-const uploadLabeledImage = multer({ dest: '/tmp/' }); // Temporary directory for labeled images
+// Utility to convert stream to buffer
+const streamToBuffer = (stream) =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on("data", (chunk) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", (err) => reject(err));
+  });
 
-let faceMatcher; // To store the face matcher after loading descriptors
+let faceMatcher;
 
 // Initialize face-api.js and load descriptors
 initializeModels()
@@ -122,18 +110,54 @@ initializeModels()
     console.error("Error initializing face matcher:", error.message);
   });
 
-// Endpoint to verify face
+// Upload labeled images to S3 and reload descriptors
+app.post("/loadimages", upload.single("image"), async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || !req.file) {
+      return res.status(400).json({ success: false, error: "Name and image are required" });
+    }
+
+    // Upload the image to S3
+    const fileName = `${Date.now()}-${req.file.originalname}`;
+    const s3Key = `labels/${name}/${fileName}`;
+    await s3
+      .upload({
+        Bucket: bucketName,
+        Key: s3Key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      })
+      .promise();
+
+    console.log(`Uploaded file to S3: ${s3Key}`);
+
+    // Reload labeled descriptors
+    const labeledDescriptors = await loadLabeledDescriptors();
+    faceMatcher = new faceapi.FaceMatcher(labeledDescriptors);
+    console.log("Labeled descriptors reloaded successfully");
+
+    res.json({
+      success: true,
+      message: "Image uploaded and labeled descriptors reloaded successfully",
+      fileKey: s3Key,
+    });
+  } catch (error) {
+    console.error("Error uploading labeled image to S3:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Verify face using images from S3
 app.post("/api/verify-face", upload.single("image"), async (req, res) => {
   try {
-    const imagePath = req.file.path;
-
-    // Validate image file exists
-    if (!fs.existsSync(imagePath)) {
-      return res.status(400).json({ success: false, error: "File not found" });
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No file uploaded" });
     }
 
     // Load and process the uploaded image
-    const img = await canvas.loadImage(imagePath).catch((err) => {
+    const img = await canvas.loadImage(req.file.buffer).catch((err) => {
       throw new Error("Error loading image: " + err.message);
     });
 
@@ -142,65 +166,21 @@ app.post("/api/verify-face", upload.single("image"), async (req, res) => {
       .withFaceLandmarks()
       .withFaceDescriptors();
 
-    // Clean up uploaded file
-    fs.unlinkSync(imagePath);
-
     // Compare the descriptors with the labeled descriptors
     const results = detections.map((detection) => {
       const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-      return bestMatch.toString(); // e.g., "HTR (distance: 0.45)" or "unknown"
+      return bestMatch.toString(); // e.g., "John (distance: 0.45)" or "unknown"
     });
 
     res.json({ success: true, matches: results });
   } catch (error) {
-    console.error("Error processing the face verification:", error.message);
+    console.error("Error verifying face:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
-// Endpoint to upload labeled images and reload descriptors
-app.post("/loadimages", uploadLabeledImage.single("image"), async (req, res) => {
-  try {
-    const { name } = req.body;
-
-    if (!name || !req.file) {
-      return res.status(400).json({ success: false, error: "Name and image are required" });
-    }
-
-    // Use `/tmp/` for temporary storage
-    const labelDir = path.join('/tmp', "labels", name);
-    if (!fs.existsSync(labelDir)) {
-      fs.mkdirSync(labelDir, { recursive: true }); // Create directory recursively
-      console.log(`Created directory: ${labelDir}`);
-    }
-
-    // Move the uploaded file to the created folder in `/tmp`
-    const ext = path.extname(req.file.originalname); // Preserve file extension
-    const newFilePath = path.join(labelDir, `${Date.now()}${ext}`); // Unique filename using timestamp
-    fs.renameSync(req.file.path, newFilePath); // Move file to the new path
-
-    console.log(`File saved to: ${newFilePath}`);
-
-    // Reload labeled descriptors to include the newly added data
-    const labeledDescriptors = await loadLabeledDescriptors();
-    faceMatcher = new faceapi.FaceMatcher(labeledDescriptors);
-    console.log("Labeled descriptors reloaded successfully");
-
-    res.json({
-      success: true,
-      message: "Image uploaded and labeled descriptors reloaded successfully",
-      folder: labelDir,
-      file: newFilePath,
-    });
-  } catch (error) {
-    console.error("Error processing labeled image upload:", error.message);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3004;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
