@@ -10,13 +10,11 @@ const cors = require('cors');
 const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
-
-// Initialize face-api.js models
-
 const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Initialize face-api.js models
 const initializeModels = async () => {
   try {
     const modelPath = path.join(__dirname, "models");
@@ -64,13 +62,9 @@ const loadLabeledDescriptors = async () => {
   );
 };
 
-// Multer setup for file uploads
-const upload = multer({ dest: "uploads/" });
-const uploadLabeledImage = multer({ dest: "temp/" }); // Temporary directory for labeled images
-
-// Express app setup
-
-
+// Multer setup for file uploads (use /tmp folder in Vercel for uploads)
+const upload = multer({ dest: '/tmp/' });  // Set temporary upload directory to /tmp/
+const uploadLabeledImage = multer({ dest: '/tmp/' }); // Temporary directory for labeled images
 
 let faceMatcher; // To store the face matcher after loading descriptors
 
@@ -126,8 +120,8 @@ app.post("/api/load-labeled-descriptors", uploadLabeledImage.single("image"), as
   try {
     const { name } = req.body;
 
-    console.log("req.body",req.body);
-    
+    console.log("req.body", req.body);
+
     // Validate request body
     if (!name || !req.file) {
       return res.status(400).json({ success: false, error: "Name and image are required" });
@@ -140,7 +134,7 @@ app.post("/api/load-labeled-descriptors", uploadLabeledImage.single("image"), as
       console.log(`Created directory: ${labelDir}`);
     }
 
-    // Move the uploaded file to the created folder
+    // Move the uploaded file to the created folder (use /tmp path for storage)
     const ext = path.extname(req.file.originalname); // Preserve file extension
     const newFilePath = path.join(labelDir, `${Date.now()}${ext}`); // Use a timestamp to ensure unique filenames
     fs.renameSync(req.file.path, newFilePath);
