@@ -1,15 +1,11 @@
 {
   "builds": [
     {
-      "src": "package.json",
+      "src": "upload.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": [
-          "package.json",
-          "node_modules/**/*"
-        ]
+        "externalPackages": ["@tensorflow/tfjs-node", "canvas"]
       }
     }
-  ],
-  "installCommand": "apt-get update && apt-get install -y libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++ && npm install"
+  ]
 }
