@@ -12,7 +12,7 @@
   "description": "",
   "dependencies": {
     "@tensorflow/tfjs-node": "^4.22.0",
-    "canvas": "^3.0.1",
+    "canvas": "2.6.1",
     "cors": "^2.8.5",
     "express": "^4.21.1",
     "face-api.js": "^0.22.2",
