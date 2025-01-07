@@ -6,6 +6,7 @@ const canvas = require("canvas");
 const faceapi = require("face-api.js");
 const cors = require("cors");
 const { Readable } = require("stream");
+require('dotenv').config();
 
 // Monkey-patch face-api.js to use canvas in Node.js
 const { Canvas, Image, ImageData } = canvas;
@@ -16,6 +17,13 @@ app.use(express.json());
 app.use(cors({ origin: "*", methods: "GET,POST,PUT,DELETE", allowedHeaders: "Content-Type, Authorization" }));
 
 // AWS S3 Configuration
+// const s3 = new AWS.S3({
+//   accessKeyId: process.env.ACCESS_KEY_ID,
+//   secretAccessKey: process.env.SECRET_ACCESS_KEY,
+//   region: process.env.REGION,
+// });
+// const bucketName = "sazs-attendance";
+
 const s3 = new AWS.S3({
   accessKeyId: "AKIAXYKJTMARMYSGNCMD",
   secretAccessKey: "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",
@@ -182,7 +190,7 @@ app.post("/api/verify-face", upload.single("image"), async (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3004;
+const PORT = 3004;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
