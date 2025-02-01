@@ -13,9 +13,16 @@ const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
 const app = express();
-app.use(express.json());
-app.use(express.bodyParser({limit: '50mb'}));
-app.use(cors({ origin: "*", methods: "GET,POST,PUT,DELETE", allowedHeaders: "Content-Type, Authorization" }));
+
+// Middleware
+app.use(cors({ 
+    origin: "*", 
+    methods: "GET,POST,PUT,DELETE", 
+    allowedHeaders: "Content-Type, Authorization" 
+}));
+
+app.use(bodyParser.json({ limit: "50mb" }));  // Parse JSON bodies (increased size)
+app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));  // Parse URL-encoded bodies
 
 // AWS S3 Configuration
 // const s3 = new AWS.S3({
